@@ -39,7 +39,7 @@ ipfs.on('ready', async () => {
 
     // Listen for updates from peers
     db.events.on('replicated', (address) => {
-        console.log(db.iterator({ limit: -1 }).collect())
+        console.log('Replicated: ', address);
     });
 
     console.log("OrbitDB Database address: ", db.address.toString());
