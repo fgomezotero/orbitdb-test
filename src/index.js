@@ -10,7 +10,7 @@ const uuid = require('uuid/v4');
 const ipfsPath = process.env.IPFS_PATH || `${process.env.HOME}/.ipfs`;
 const ipfsBootstrap = process.env.IPFS_BOOTSTRAP || '';
 const dbPath = process.env.DB_PATH || `${process.env.HOME}/.orbitdb`;
-const dbName = process.env.DB_NAME || "knowledge-db";
+const dbName = process.env.DB_NAME || "inmutable-db";
 const port = process.env.PORT || 3000;
 
 const app = express();
@@ -32,7 +32,7 @@ ipfs.on('error', (err) => console.error("IPFS Error: ", err));
 ipfs.on('ready', async () => {
     const orbitdb = new OrbitDB(ipfs, dbPath);
 
-    const db = await orbitdb.docstore(dbName, {
+    const db = await orbitdb.eventlog(dbName, {
         write: ['*'],
     });
     await db.load()
@@ -43,21 +43,32 @@ ipfs.on('ready', async () => {
     });
 
     console.log("OrbitDB Database address: ", db.address.toString());
-
-    app.post('/api/v1/posts', (req, res) => {
-        const post = Object.assign(req.body, { _id: uuid() });
-
-        return db.put(post)
-            .then(() => res.send(JSON.stringify(post)));
-    })
-
-    app.get('/api/v1/posts', (req, res) => {
-        return res.send(JSON.stringify(db.query(() => true)));
-    })
-
-    app.get('/api/v1/posts/:postId', (req, res) => {
-        return res.send(JSON.stringify(db.get(req.params.postId)));
-    });
+    try {
+        app.post('/api/v1/posts', (req, res) => {
+            let post = Object.assign(req.body, { _id: uuid() });
+            return db.add(post)
+                .then(function (hash) {
+                    post = Object.assign({ _hash: hash}, post);
+                    res.send(post);
+                })
+        })
+    
+        app.get('/api/v1/posts', (req, res) => {
+            const items = db.iterator({ limit: -1 }).collect();
+            items.forEach(element => {
+                console.log(element.payload.value)
+            });
+           return res.send(items)
+        });
+    
+        app.get('/api/v1/posts/:hash', (req, res) => { 
+            const item = db.get(req.params.hash).payload.value;
+            console.log(item);
+            return res.send(item);
+        });            
+    } catch (error) {
+        console.log(error)
+    }
 
     app.listen(port, () => console.log(`Listening on port ${port}...`));
-});
+})
